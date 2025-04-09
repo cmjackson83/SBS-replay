@@ -13,6 +13,7 @@
 #include "THaAnalyzer.h"
 #include "THaVarList.h"
 #include "THaInterface.h"
+#include "THaGoldenTrack.h"
 
 #include "SBSBigBite.h"
 #include "SBSBBShower.h"
@@ -24,6 +25,8 @@
 #include "SBSHCal.h"
 #include "SBSECal.h"
 #include "SBSGEMSpectrometerTracker.h"
+#include "SBSGEMPolarimeterTracker.h"
+#include "SBSGEPRegionOfInterestModule.h"
 #include "SBSTimingHodoscope.h"
 
 #include "SBSSimDecoder.h"
@@ -34,12 +37,14 @@ TDatime get_datime(uint gepconfig)
 {
   std::unordered_map<uint,TDatime> m = {{1, "2024-10-01 00:00:00"},
 					{2, "2024-10-01 00:00:00"},
-					{3, "2024-10-01 00:00:00"}};
+					{3, "2024-10-01 00:00:00"},
+					{4, "2024-10-01 00:00:00"}};
   if (m.find(gepconfig)==m.end()) 
     throw std::invalid_argument("Invalid SBS config!! Valid options are: 1,2,3");
   return m[gepconfig];
 }
 
+//NOTE: the "experiment" argument here appears redundant:
 void replay_gep_mc(const char* filebase, uint gepconfig, uint nev = -1, TString experiment="gep")
 {
   SBSGEPEArm* earm = new SBSGEPEArm("earm", "GEP electron arm" );
@@ -50,13 +55,21 @@ void replay_gep_mc(const char* filebase, uint gepconfig, uint nev = -1, TString 
   SBSEArm *harm = new SBSEArm("sbs","Hadron Arm with HCal");
   harm->AddDetector( new SBSHCal("hcal","HCAL") );
   harm->AddDetector( new SBSGEMSpectrometerTracker("gemFT", "Front tracker") );
-  harm->AddDetector( new SBSGEMSpectrometerTracker("gemFPP", "Focal Plane Polarimeter") );
+  harm->AddDetector( new SBSGEMPolarimeterTracker("gemFPP", "Focal Plane Polarimeter") );
   gHaApps->Add(harm);
-
   //bigbite->SetDebug(2);
   //harm->SetDebug(2);
 
   THaAnalyzer* analyzer = new THaAnalyzer;
+
+  SBSGEPRegionOfInterestModule *ROI = new SBSGEPRegionOfInterestModule( "FTROI", "GEP region of interest calculation", THaAnalyzer::kCoarseRecon );
+
+  //gHaPhysics->Add( ROI );
+
+  analyzer->AddInterStage( ROI );
+
+  //It seems necessary to add the SBS "golden track" for certain physics modules.
+  gHaPhysics->Add( new THaGoldenTrack( "SBS.gold", "SBS golden track", "sbs") );
   
   THaInterface::SetDecoder( SBSSimDecoder::Class() );
   
@@ -70,7 +83,7 @@ void replay_gep_mc(const char* filebase, uint gepconfig, uint nev = -1, TString 
     exit(-1);
   }
   
-  THaRunBase *run = new SBSSimFile(run_file.Data(), "gmn", "");
+  THaRunBase *run = new SBSSimFile(run_file.Data(), experiment.Data(), "");
   run->SetFirstEvent(0);
 
   cout << "Number of events to replay (-1=all)? ";
